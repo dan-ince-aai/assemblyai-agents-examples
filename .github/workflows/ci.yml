@@ -1,0 +1,80 @@
+name: CI
+
+# The examples used to be tested by the SDK's own CI, which is what stopped them
+# drifting from it. That job moves here: install the SDK from its main branch and
+# prove every example still imports, declares a valid agent, and passes its
+# tests. Without this, a breaking change to the SDK shows up as a customer's
+# first five minutes not working.
+on:
+  push:
+  pull_request:
+  # The SDK moves on its own, so a green build here can go stale without anything
+  # in this repo changing.
+  schedule:
+    - cron: "17 6 * * 1"
+
+env:
+  SDK: "git+https://github.com/dan-ince-aai/assemblyai-agents-python.git"
+
+jobs:
+  examples:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install the SDK from its main branch
+        run: python -m pip install --upgrade pip && python -m pip install "${SDK}" httpx pytest pytest-asyncio
+
+      - name: Every example builds a valid declaration
+        # Not just an import: `build()` is where tool URLs are bound and where a
+        # ConfigurationError would surface, and the agent must have no
+        # client-resident tools or it cannot go on a phone number.
+        env:
+          TOOL_SECRET: ci-secret
+          PUBLIC_BASE_URL: https://ci.invalid
+        run: |
+          python - <<'PY'
+          import importlib.util, sys
+          for name in ("expose", "tools_only_agent", "one_file_agent", "subagents", "phone"):
+              spec = importlib.util.spec_from_file_location(name, f"{name}.py")
+              module = importlib.util.module_from_spec(spec)
+              sys.modules[name] = module
+              spec.loader.exec_module(module)
+              build = getattr(module, "build", None)
+              if build is None:
+                  print(f"{name}: imports")
+                  continue
+              agent = build("https://ci.invalid")
+              request = agent.to_request()
+              assert request.tools, name
+              assert all(t.http and t.http.url for t in request.tools), f"{name}: a tool has no http config"
+              assert not agent.client_resident_tool_names(), f"{name}: cannot go on a phone number"
+              print(f"{name}: {len(request.tools)} tools, all hosted")
+          PY
+
+      - name: The starter's tests are whole calls
+        working-directory: starter
+        run: python -m pytest -q
+
+      - name: The starter rehearses a whole call offline
+        working-directory: starter
+        run: |
+          python rehearse.py happy
+          python rehearse.py wrong_name
+
+      - name: A copied starter still runs
+        # The documented flow is `cp -r starter my-agent`. It broke once because
+        # run.py loaded expose.py from one directory up, so this copies it out of
+        # the repo entirely and runs it there.
+        run: |
+          cp -r starter "${RUNNER_TEMP}/my-agent"
+          cd "${RUNNER_TEMP}/my-agent"
+          python rehearse.py happy
+          python -m pytest -q
