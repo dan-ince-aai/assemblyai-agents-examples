@@ -14,7 +14,14 @@ on:
     - cron: "17 6 * * 1"
 
 env:
-  SDK: "git+https://github.com/dan-ince-aai/assemblyai-agents-python.git"
+  # Pinned to the branch that adds `byo`, `serving` and `Tool.hosted_at`, which
+  # every example here needs and which is not on the SDK's main branch yet:
+  # https://github.com/dan-ince-aai/assemblyai-agents-python/pull/1
+  #
+  # The "pin is stale" job below fails the build once that lands, so this cannot
+  # quietly outlive the pull request. Change SDK_REF to main and delete that job.
+  SDK_REF: byo-and-starter
+  SDK_REPO: "github.com/dan-ince-aai/assemblyai-agents-python.git"
 
 jobs:
   examples:
@@ -30,7 +37,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install the SDK from its main branch
-        run: python -m pip install --upgrade pip && python -m pip install "${SDK}" httpx pytest pytest-asyncio
+        run: python -m pip install --upgrade pip && python -m pip install "git+https://${SDK_REPO}@${SDK_REF}" httpx pytest pytest-asyncio
 
       - name: Every example builds a valid declaration
         # Not just an import: `build()` is where tool URLs are bound and where a
@@ -78,3 +85,22 @@ jobs:
           cd "${RUNNER_TEMP}/my-agent"
           python rehearse.py happy
           python -m pytest -q
+
+  pin-is-stale:
+    # A pin to an unmerged branch is a thing that outlives its reason. This makes
+    # that impossible: the moment main can satisfy the examples, the build goes
+    # red and says so. Delete this job in the same commit that unpins.
+    if: ${{ github.event_name != 'pull_request' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Has main caught up?
+        run: |
+          python -m pip install --quiet "git+https://${SDK_REPO}@main"
+          if python -c "import assemblyai_agents.byo, assemblyai_agents.serving" 2>/dev/null; then
+            echo "::error::The SDK's main branch now has byo and serving. Set SDK_REF to main and delete this job."
+            exit 1
+          fi
+          echo "main does not have them yet; the pin in SDK_REF is still doing work."
