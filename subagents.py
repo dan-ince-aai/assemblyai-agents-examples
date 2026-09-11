@@ -48,7 +48,7 @@ import httpx
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from assemblyai_agents import Client, NotFoundError, VoiceAgent, tool
-from assemblyai_agents.byo import Turn, call_tool, digits_said, say, silence
+from assemblyai_agents.replies import Turn, call_tool, digits_said, say, silence
 from assemblyai_agents.models.rest import (
     HttpToolHeaderInput,
     LlmConfigRequest,

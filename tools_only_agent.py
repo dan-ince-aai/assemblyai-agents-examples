@@ -30,7 +30,7 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from assemblyai_agents import Client, NotFoundError, VoiceAgent, tool
-from assemblyai_agents.byo import digits_said
+from assemblyai_agents.replies import digits_said
 from assemblyai_agents.models.rest import (
     HttpToolHeaderInput,
 )

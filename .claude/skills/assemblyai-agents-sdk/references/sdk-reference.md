@@ -176,12 +176,12 @@ plus `UnknownEvent(type, raw)` for anything unrecognised (a top-level export def
 
 Wire audio: 16-bit little-endian mono PCM, 24 kHz (`audio/pcm`); telephony encodings 8 kHz μ-law / A-law.
 
-## byo: writing the replies
+## replies: writing the replies
 
-`assemblyai_agents.byo` — everything in *Backend contracts* below, already handled.
+`assemblyai_agents.replies` — everything in *Backend contracts* below, already handled.
 
 ```python
-from assemblyai_agents.byo import (
+from assemblyai_agents.replies import (
     Turn, ToolResult, Say, Call, Silence,
     say, call_tool, silence, stream, json_body, established, digits_said,
 )
@@ -259,7 +259,7 @@ serve(agent, *, reply=None, host="0.0.0.0", port=8000, tool_secret=None, llm_key
 ```
 Routes served: `POST /tools/{name}` (one per `@tool`, checked against `Authorization: Bearer <tool_secret>`), `POST /v1/chat/completions` (only when `reply=` is given; streams SSE, `Bearer <llm_key>`), one route per declared pre-connect URL (handlers passed as `pre_connect={"/pre-connect/whois": fn}`), `POST /webhooks/voice-agents` (verified against `webhook_secret`, dispatched to `on_event`), and `GET /healthz`.
 
-- `reply` is `Callable[[Turn], Say | Call | Silence]` — see `assemblyai_agents.byo`.
+- `reply` is `Callable[[Turn], Say | Call | Silence]` — see `assemblyai_agents.replies`.
 - `background=True` returns the server instead of blocking, for tests.
 - Raise `Refused(message)` from a tool handler to return a refusal the model can read rather than a 500.
 - `routes(agent, ...)` takes the same keywords and returns `{path: handler}` as plain callables, to mount into an application that already exists — FastAPI, Flask, anything.

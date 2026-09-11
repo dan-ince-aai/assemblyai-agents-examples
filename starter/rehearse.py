@@ -24,7 +24,7 @@ os.environ.setdefault("TOOL_SECRET", "rehearsal-tool-secret")
 os.environ.setdefault("LLM_API_KEY", "rehearsal-llm-key")
 os.environ.setdefault("BYO_LLM", "1")
 
-from assemblyai_agents.byo import Call, Say, Turn
+from assemblyai_agents.replies import Call, Say, Turn
 
 import reply
 import store

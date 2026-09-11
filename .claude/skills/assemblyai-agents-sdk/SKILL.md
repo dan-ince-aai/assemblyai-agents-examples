@@ -443,14 +443,14 @@ docs alone):
   multi-turn calls offline instead. Real speech is unaffected — it arrives as
   ordinary `user` messages.
 
-### The `byo` module does the plumbing
+### The `replies` module does the plumbing
 
-`assemblyai_agents.byo` is the contract in this section, already written. Use
+`assemblyai_agents.replies` is the contract in this section, already written. Use
 it rather than hand-rolling SSE and transcript parsing. It is deliberately
 small: reading a request, three ways to answer, and the streaming shape.
 
 ```python
-from assemblyai_agents.byo import Turn, call_tool, say, silence, stream
+from assemblyai_agents.replies import Turn, call_tool, say, silence, stream
 
 def decide(turn):
     if turn.pending and turn.pending.name == "verify_caller":

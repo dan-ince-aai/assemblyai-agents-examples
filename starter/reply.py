@@ -17,7 +17,7 @@ answering an objection with a position that is settled in code.
 
 import re
 
-from assemblyai_agents.byo import Turn, call_tool, digits_said, say, silence
+from assemblyai_agents.replies import Turn, call_tool, digits_said, say, silence
 
 import model
 import store

@@ -39,7 +39,7 @@ _IN_FLIGHT: dict | None = None
 _TIMES = ("09:00", "09:30", "11:00", "14:00", "15:30", "16:00")
 
 
-from assemblyai_agents.byo import digits_said
+from assemblyai_agents.replies import digits_said
 
 
 def _digits(value: str) -> str:

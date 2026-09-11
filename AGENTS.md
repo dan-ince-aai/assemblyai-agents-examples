@@ -65,7 +65,7 @@ already has one, mount `routes(agent, ...)` into it.
 - **Never send an argument value the conversation has not established.** The
   platform refuses a tool call carrying an invented or reworded value, and the
   refusal reaches the caller as silence. Pass what was actually said, verbatim,
-  and drop empty values (`byo.established(**arguments)` does that).
+  and drop empty values (`replies.established(**arguments)` does that).
 - **Validate arguments in the handler.** A model that was never told a value
   asks for it anyway: a live call reached `find_policy(policy_number="policy
   number")`, the parameter's description echoed back as its value. Return a

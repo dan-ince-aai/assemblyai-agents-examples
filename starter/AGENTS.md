@@ -38,7 +38,7 @@ fallback wording stays honest.
 - **Never send an argument value the conversation has not established.** The
   platform refuses a tool call carrying an invented or reworded value, and the
   refusal reaches the caller as silence. Pass what was said, verbatim, and drop
-  empty values with `byo.established(**arguments)`.
+  empty values with `replies.established(**arguments)`.
 - **Validate arguments in the handler.** A model that was never told a value
   asks for it anyway: a live call reached `find_policy(policy_number="policy
   number")`, the parameter's description echoed back as its value. Return a
