@@ -25,22 +25,16 @@ no backend in between.
 
 import os
 import sys
-from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from assemblyai_agents import Client, NotFoundError, VoiceAgent, tool
+from assemblyai_agents import VoiceAgent, tool
 from assemblyai_agents.replies import digits_said
-from assemblyai_agents.models.rest import (
-    HttpToolHeaderInput,
-)
-from assemblyai_agents.serving import claim_port, serve
 
 from expose import public_address
 
 PORT = int(os.environ.get("PORT", "8000"))
 SECRET = os.environ.get("SHARED_SECRET", "change-me-" + os.urandom(4).hex())
-ID_FILE = Path(__file__).with_name(".tools_only_agent_id")
 
 # Stand in for whatever you would really query: a stock system, a warehouse
 # API, a database. The tool surface does not change.
@@ -121,58 +115,32 @@ and offer what is nearby on the shelf.
 """
 
 
-def build(base_url: str) -> VoiceAgent:
-    """The declaration, with every tool pointed at this process."""
+# --------------------------------------------------------------------------- the agent
+#
+# No address in the declaration. Every tool is served by this process, and the
+# platform is told where that is when the agent is deployed.
 
-    # `hosted_at` returns a new tool bound to that address; the module-level
-    # TOOLS are left unbound, so tests can import them and one run's tunnel
-    # cannot leak into another declaration.
-    auth = HttpToolHeaderInput(name="Authorization", value=f"Bearer {SECRET}")
-    tools = [
-        declared.hosted_at(f"{base_url}/tools/{declared.name}", headers=[auth])
-        for declared in TOOLS
-    ]
-
-    return VoiceAgent(
-        name="Ridgeway Hardware",
-        voice=os.environ.get("VOICE", "ivy"),
-        system_prompt=SYSTEM_PROMPT,
-        greeting="Ridgeway Hardware, how can I help?",
-        tools=tools,
-        # No `llm=`: the platform's own model runs the conversation.
-    )
-
-
-def deploy(agent: VoiceAgent) -> str:
-    client = Client(base_url=os.environ.get("AAI_BASE_URL", "https://agents.assemblyai.com"))
-    stored = ID_FILE.read_text().strip() if ID_FILE.exists() else ""
-    if stored:
-        try:
-            client.agents.update(stored, agent)
-            print(f"updated agent {stored}")
-            return stored
-        except NotFoundError:
-            pass
-    created = client.agents.create(agent)
-    ID_FILE.write_text(created.id)
-    print(f"created agent {created.id}")
-    return created.id
+agent = VoiceAgent(
+    name="Ridgeway Hardware",
+    voice=os.environ.get("VOICE", "alba"),
+    system_prompt=SYSTEM_PROMPT,
+    greeting="Ridgeway Hardware, how can I help?",
+    tools=TOOLS,
+    # No `reply=`: the platform's own model runs the conversation.
+)
 
 
 def main() -> int:
     if not os.environ.get("ASSEMBLYAI_API_KEY"):
         sys.exit("set ASSEMBLYAI_API_KEY")
-
+    # An address first, because the platform resolves every tool URL in DNS when
+    # the agent is deployed. `public_address` yields PUBLIC_BASE_URL if you set
+    # one, else it starts ngrok — a development convenience that lives in this
+    # file, not in the SDK. See the hosting docs for Railway, Render, Modal and
+    # the rest, where the host gives you the address.
     with public_address(PORT) as base_url:
-        # Before the deploy, not after: deploy repoints the stored agent, and a
-        # port already held by an earlier run would otherwise leave a live agent
-        # whose tool URLs answer to nothing.
-        claim_port(port=PORT)
-        agent = build(base_url)
-        agent_id = deploy(agent)
-        print(f"\nagent {agent_id} is live. Point a phone number at it and call in.\n")
-        # No `reply=`: only the tools are served from here.
-        serve(agent, port=PORT, tool_secret=SECRET)
+        # Deploys (create, or update the id in .agent_id), then serves. Blocks.
+        agent.serve(public_url=base_url, secret=SECRET, port=PORT, id_file=".tools_only_agent_id")
     return 0
 
 

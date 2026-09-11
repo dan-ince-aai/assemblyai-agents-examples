@@ -4,14 +4,14 @@ import agent as agent_module
 from assemblyai_agents.models.rest import HttpMethod
 
 
-def test_every_tool_is_hosted_so_a_phone_call_can_be_answered():
-    # A client-resident tool has nothing to answer it on a phone call, and the
-    # SDK refuses to attach a number to an agent that still has one.
-    assert agent_module.agent.client_resident_tool_names() == ()
+def test_every_tool_is_served_by_this_process():
+    # Bare tools are hosted here; the deploy binds them to PUBLIC_BASE_URL.
+    assert set(agent_module.agent.hosted_tool_names()) == {t.name for t in agent_module.TOOLS}
     for tool in agent_module.agent.to_request().tools:
         assert tool.http is not None
-        assert tool.http.url.startswith("https://")
+        assert tool.http.url.startswith("https://starter.test.local/tools/")
         assert tool.http.http_method == HttpMethod.POST
+        assert tool.http.headers[0].name == "Authorization"
 
 
 def test_the_tools_take_what_the_caller_said_rather_than_a_derived_value():
@@ -39,6 +39,7 @@ def test_the_lookup_hands_back_nothing_identifying():
 def test_the_pre_connect_lookup_may_rewrite_the_greeting():
     entry = agent_module.agent.to_request().pre_connect_requests[0]
 
+    assert entry.http.url == "https://starter.test.local/pre-connect/lookup"
     assert entry.allow_overrides == ["greeting"]
     assert entry.timeout_ms <= 800
     assert {captured.name for captured in entry.returns} == {"reference", "first_name"}
@@ -46,7 +47,8 @@ def test_the_pre_connect_lookup_may_rewrite_the_greeting():
 
 def test_replies_come_from_our_own_endpoint():
     llm = agent_module.agent.to_request().llm[0]
-    assert llm.base_url.endswith("/v1")
+    assert llm.base_url == "https://starter.test.local/v1"
+    assert agent_module.agent.hosts_replies
 
 
 def test_the_greeting_names_the_practice_and_the_recording():

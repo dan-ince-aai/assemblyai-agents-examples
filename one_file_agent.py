@@ -22,17 +22,11 @@ the part that goes away once there is somewhere to deploy to.
 
 import os
 import sys
-from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from assemblyai_agents import Client, NotFoundError, VoiceAgent, tool
+from assemblyai_agents import VoiceAgent, tool
 from assemblyai_agents.replies import Turn, call_tool, digits_said, say, silence
-from assemblyai_agents.models.rest import (
-    HttpToolHeaderInput,
-    LlmConfigRequest,
-)
-from assemblyai_agents.serving import claim_port, serve
 
 from expose import public_address
 
@@ -40,7 +34,6 @@ PORT = int(os.environ.get("PORT", "8000"))
 # Presented by the platform on every request to this process, and checked by
 # `serve`. Anything that reaches the address otherwise gets a 401.
 SECRET = os.environ.get("SHARED_SECRET", "change-me-" + os.urandom(4).hex())
-ID_FILE = Path(__file__).with_name(".one_file_agent_id")
 
 # Stand in for whatever you would really query.
 ORDERS = {
@@ -133,67 +126,27 @@ def decide(turn: Turn):
 # --------------------------------------------------------------------------- wiring
 
 
-def build(base_url: str) -> VoiceAgent:
-    """The declaration, with every tool pointed at this process."""
+# --------------------------------------------------------------------------- the agent
 
-    # `hosted_at` returns a new tool bound to that address; the module-level
-    # TOOLS are left unbound, so tests can import them and one run's tunnel
-    # cannot leak into another declaration.
-    auth = HttpToolHeaderInput(name="Authorization", value=f"Bearer {SECRET}")
-    tools = [
-        declared.hosted_at(f"{base_url}/tools/{declared.name}", headers=[auth])
-        for declared in TOOLS
-    ]
-
-    return VoiceAgent(
-        name="Northwind order line",
-        voice=os.environ.get("VOICE", "ivy"),
-        system_prompt="You answer order questions for Northwind. Keep replies short.",
-        greeting=GREETING,
-        tools=tools,
-        # Comment this out and the platform's own model runs the conversation,
-        # still calling the same tools.
-        llm=LlmConfigRequest(base_url=f"{base_url}/v1", model="northwind", api_key=SECRET),
-    )
-
-
-def deploy(agent: VoiceAgent) -> str:
-    client = Client(base_url=os.environ.get("AAI_BASE_URL", "https://agents.assemblyai.com"))
-    stored = ID_FILE.read_text().strip() if ID_FILE.exists() else ""
-    if stored:
-        try:
-            client.agents.update(stored, agent)
-            print(f"updated agent {stored}")
-            return stored
-        except NotFoundError:
-            pass
-    created = client.agents.create(agent)
-    ID_FILE.write_text(created.id)
-    print(f"created agent {created.id}")
-    return created.id
+agent = VoiceAgent(
+    name="Northwind order line",
+    voice=os.environ.get("VOICE", "alba"),
+    system_prompt="You answer order questions for Northwind. Keep replies short.",
+    greeting=GREETING,
+    tools=TOOLS,
+    # This process decides every reply. Remove the line and the platform's own
+    # model runs the conversation instead, still calling the same tools.
+    reply=decide,
+)
 
 
 def main() -> int:
     if not os.environ.get("ASSEMBLYAI_API_KEY"):
         sys.exit("set ASSEMBLYAI_API_KEY")
-
     with public_address(PORT) as base_url:
-        # Before the deploy, not after: deploy repoints the stored agent, and a
-        # port already held by an earlier run would otherwise leave a live agent
-        # whose tool URLs answer to nothing.
-        claim_port(port=PORT)
-        agent = build(base_url)
-        agent_id = deploy(agent)
-        print(f"\nagent {agent_id} is live. Point a phone number at it and call in.\n")
-        # Blocks. Every tool call and every reply arrives here over HTTPS,
-        # whether the caller is on a phone or a browser.
-        serve(
-            agent,
-            reply=decide,
-            port=PORT,
-            tool_secret=SECRET,
-            llm_key=SECRET,
-        )
+        # Every tool call and every reply arrives here over HTTPS, whether the
+        # caller is on a phone or in a browser. Blocks.
+        agent.serve(public_url=base_url, secret=SECRET, port=PORT, id_file=".one_file_agent_id")
     return 0
 
 

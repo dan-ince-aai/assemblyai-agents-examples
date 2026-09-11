@@ -40,26 +40,19 @@ import json
 import os
 import sys
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Callable
 
 import httpx
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from assemblyai_agents import Client, NotFoundError, VoiceAgent, tool
+from assemblyai_agents import VoiceAgent, tool
 from assemblyai_agents.replies import Turn, call_tool, digits_said, say, silence
-from assemblyai_agents.models.rest import (
-    HttpToolHeaderInput,
-    LlmConfigRequest,
-)
-from assemblyai_agents.serving import claim_port, serve
 
 from expose import public_address
 
 PORT = int(os.environ.get("PORT", "8000"))
 SECRET = os.environ.get("SHARED_SECRET", "change-me-" + os.urandom(4).hex())
-ID_FILE = Path(__file__).with_name(".subagents_id")
 
 # Any OpenAI-compatible gateway. This one takes the same key as the rest of the
 # platform, which is why there is no second provider to set up.
@@ -359,59 +352,27 @@ def decide(turn: Turn):
 # --------------------------------------------------------------------------- wiring
 
 
-def build(base_url: str) -> VoiceAgent:
-    # `hosted_at` returns a new tool bound to that address; the module-level
-    # TOOLS are left unbound, so tests can import them and one run's tunnel
-    # cannot leak into another declaration.
-    auth = HttpToolHeaderInput(name="Authorization", value=f"Bearer {SECRET}")
-    tools = [
-        declared.hosted_at(f"{base_url}/tools/{declared.name}", headers=[auth])
-        for declared in TOOLS
-    ]
+# --------------------------------------------------------------------------- the agent
 
-    return VoiceAgent(
-        name="Fairview Dental (subagents)",
-        voice=os.environ.get("VOICE", "ivy"),
-        # Every tool is declared on the agent. Which of them a given turn may
-        # use is decided here, not there.
-        system_prompt="You answer the phone for Fairview Dental.",
-        greeting="Fairview Dental, how can I help?",
-        tools=tools,
-        llm=LlmConfigRequest(base_url=f"{base_url}/v1", model="subagent-router", api_key=SECRET),
-    )
-
-
-def deploy(agent: VoiceAgent) -> str:
-    client = Client(base_url=os.environ.get("AAI_BASE_URL", "https://agents.assemblyai.com"))
-    stored = ID_FILE.read_text().strip() if ID_FILE.exists() else ""
-    if stored:
-        try:
-            client.agents.update(stored, agent)
-            print(f"updated agent {stored}")
-            return stored
-        except NotFoundError:
-            pass
-    created = client.agents.create(agent)
-    ID_FILE.write_text(created.id)
-    print(f"created agent {created.id}")
-    return created.id
+agent = VoiceAgent(
+    name="Fairview Dental (subagents)",
+    voice=os.environ.get("VOICE", "alba"),
+    # Every tool is declared on the agent. Which of them a given turn may use is
+    # decided in `route`, not here.
+    system_prompt="You answer the phone for Fairview Dental.",
+    greeting="Fairview Dental, how can I help?",
+    tools=TOOLS,
+    reply=decide,
+)
 
 
 def main() -> int:
     if not os.environ.get("ASSEMBLYAI_API_KEY"):
         sys.exit("set ASSEMBLYAI_API_KEY")
-    print("subagents:")
-    for subagent in SUBAGENTS:
-        print(f"  {subagent.name:13} {subagent.model:28} tools: {', '.join(subagent.tools) or '(none)'}")
+    if not GATEWAY_KEY:
+        sys.exit("set MODEL_API_KEY or ASSEMBLYAI_API_KEY for the gateway")
     with public_address(PORT) as base_url:
-        # Before the deploy, not after: deploy repoints the stored agent, and a
-        # port already held by an earlier run would otherwise leave a live agent
-        # whose tool URLs answer to nothing.
-        claim_port(port=PORT)
-        agent = build(base_url)
-        agent_id = deploy(agent)
-        print(f"\nagent {agent_id} is live. Point a phone number at it and call in.\n")
-        serve(agent, reply=decide, port=PORT, tool_secret=SECRET, llm_key=SECRET)
+        agent.serve(public_url=base_url, secret=SECRET, port=PORT, id_file=".subagents_id")
     return 0
 
 

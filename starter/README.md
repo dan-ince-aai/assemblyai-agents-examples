@@ -11,7 +11,7 @@ agent.py     the tools and the declaration       <- your tools, your prompt
 reply.py     what the agent says, as stages      <- your call flow
 flow.py      Stages and Memo, forty lines        <- the organising opinion
 model.py     a model for the turns a script cannot cover
-backend.py   serve(): the platform's requests, answered by your functions
+backend.py   agent.serve(): deploy, then answer the platform's requests
 rehearse.py  run a whole call locally, no network
 deploy.py    create, update, show, delete
 tests/       whole calls, asserted
@@ -52,11 +52,10 @@ Then point a phone number at the agent id it prints and call it. The tools are
 HTTP tools, so a real call and a browser session take the same path through
 this process.
 
-`run.py` does three things in order: gets an address, deploys the declaration
-built against it, and serves. The only file that knows a tunnel exists is
-`expose.py`; everything else reads `PUBLIC_BASE_URL`, so pointing that at a
-staging host or a deployment removes the tunnel with no other change, and
-deletes that one file when agent code can be deployed directly.
+`run.py` gets an address from ngrok and hands it to `agent.serve()`, which
+binds the declaration to it, deploys, and serves. The only file that knows a
+tunnel exists is `expose.py`; on a real host, run `backend.py` and let the host
+supply `PUBLIC_BASE_URL`.
 
 ## The idea worth keeping: stages
 
@@ -137,8 +136,7 @@ export MODEL=off      # or turn it off entirely; every test runs this way
 | --- | --- |
 | `ASSEMBLYAI_API_KEY` | Deploys and connects |
 | `PUBLIC_BASE_URL` | Public HTTPS address of `backend.py` |
-| `TOOL_SECRET` | Presented by the platform on every tool and pre-connect call |
-| `LLM_API_KEY` | Presented by the platform on the reply endpoint |
+| `AGENT_SECRET` | Presented by the platform on every request to this process |
 | `BYO_LLM=1` | Replies come from `reply.py` rather than the platform's model |
 | `MODEL_BASE_URL`, `MODEL_API_KEY`, `MODEL_NAME` | The model for free-form turns |
 | `MODEL=off` | Never call a model; canned wording everywhere |

@@ -5,8 +5,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 # The declaration reads these at import, and the tests import it.
 os.environ.setdefault("PUBLIC_BASE_URL", "https://starter.test.local")
-os.environ.setdefault("TOOL_SECRET", "test-tool-secret")
-os.environ.setdefault("LLM_API_KEY", "test-llm-key")
+os.environ.setdefault("AGENT_SECRET", "test-secret")
 os.environ.setdefault("BYO_LLM", "1")
 os.environ.setdefault("MODEL", "off")
 

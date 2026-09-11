@@ -14,13 +14,13 @@ on:
     - cron: "17 6 * * 1"
 
 env:
-  # Pinned to the branch that adds `replies`, `serving` and `Tool.hosted_at`, which
+  # Pinned to the branch that adds `replies`, `serving` and `reply=`, which
   # every example here needs and which is not on the SDK's main branch yet:
   # https://github.com/dan-ince-aai/assemblyai-agents-python/pull/1
   #
   # The "pin is stale" job below fails the build once that lands, so this cannot
   # quietly outlive the pull request. Change SDK_REF to main and delete that job.
-  SDK_REF: replies-and-starter
+  SDK_REF: byo-and-starter
   SDK_REPO: "github.com/dan-ince-aai/assemblyai-agents-python.git"
 
 jobs:
@@ -44,7 +44,7 @@ jobs:
         # ConfigurationError would surface, and the agent must have no
         # client-resident tools or it cannot go on a phone number.
         env:
-          TOOL_SECRET: ci-secret
+          AGENT_SECRET: ci-secret
           PUBLIC_BASE_URL: https://ci.invalid
         run: |
           python - <<'PY'
@@ -54,16 +54,14 @@ jobs:
               module = importlib.util.module_from_spec(spec)
               sys.modules[name] = module
               spec.loader.exec_module(module)
-              build = getattr(module, "build", None)
-              if build is None:
+              agent = getattr(module, "agent", None)
+              if agent is None:
                   print(f"{name}: imports")
                   continue
-              agent = build("https://ci.invalid")
-              request = agent.to_request()
+              request = agent.hosted_at("https://ci.invalid", secret="ci").to_request()
               assert request.tools, name
-              assert all(t.http and t.http.url for t in request.tools), f"{name}: a tool has no http config"
-              assert not agent.client_resident_tool_names(), f"{name}: cannot go on a phone number"
-              print(f"{name}: {len(request.tools)} tools, all hosted")
+              assert all(t.http and t.http.url.startswith("https://ci.invalid/tools/") for t in request.tools), f"{name}: a tool is not hosted here"
+              print(f"{name}: {len(request.tools)} tools, all hosted; replies={'ours' if request.llm else 'platform'}")
           PY
 
       - name: The starter's tests are whole calls

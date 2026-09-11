@@ -20,8 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 # anything, so a placeholder address is the honest value here. `run.py` sets the
 # real one before importing, and that wins.
 os.environ.setdefault("PUBLIC_BASE_URL", "https://rehearsal.invalid")
-os.environ.setdefault("TOOL_SECRET", "rehearsal-tool-secret")
-os.environ.setdefault("LLM_API_KEY", "rehearsal-llm-key")
+os.environ.setdefault("AGENT_SECRET", "rehearsal-secret")
 os.environ.setdefault("BYO_LLM", "1")
 
 from assemblyai_agents.replies import Call, Say, Turn

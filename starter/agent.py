@@ -4,48 +4,28 @@ Nothing here touches the network at import time, so the tests, the backend and
 the deploy script can all import it.
 
 Environment:
-    PUBLIC_BASE_URL   public HTTPS address of backend.py (a tunnel in development)
-    TOOL_SECRET       shared secret the platform presents on every tool call
-    LLM_API_KEY       shared secret the platform presents on the reply endpoint
+    PUBLIC_BASE_URL   public HTTPS address of this process (a tunnel in development)
+    AGENT_SECRET      shared secret the platform presents on every request here
+    BYO_LLM=1         reply.py decides every reply; unset, the platform's model talks
     AGENT_NAME        the name the agent gives (default "Sam")
-    VOICE             a voice id (default "ivy")
+    VOICE             a voice id (default "alba")
 """
 
 import os
 
-from assemblyai_agents import Captured, Header, PreConnectRequest, VoiceAgent, tool
-from assemblyai_agents.models.rest import (
-    HttpMethod,
-    HttpToolHeaderInput,
-    LlmConfigRequest,
-    PlaintextHttpToolConfig,
-)
+from assemblyai_agents import Captured, PreConnectRequest, VoiceAgent, tool
 
+import reply
 import store
 
-PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "").rstrip("/")
-TOOL_SECRET = os.environ.get("TOOL_SECRET", "change-me")
+PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "").rstrip("/") or None
+AGENT_SECRET = os.environ.get("AGENT_SECRET") or None
 AGENT_NAME = os.environ.get("AGENT_NAME", "Sam")
-VOICE = os.environ.get("VOICE", "ivy")
+VOICE = os.environ.get("VOICE", "alba")
+# Treat any caller as the demo patient, so a call from any handset reaches the
+# personalised greeting. Off by default.
+DEMO_MATCH_ANY = os.environ.get("DEMO_MATCH_ANY", "") not in ("", "0", "false")
 
-
-def hosted(path: str) -> PlaintextHttpToolConfig:
-    """Where the platform fetches this tool from.
-
-    Always over HTTPS: a phone call has no client on the line to ask, so the
-    platform calls the tool itself. `run.py` works out the address first and
-    then builds the declaration against it.
-    """
-    if not PUBLIC_BASE_URL:
-        raise RuntimeError(
-            "PUBLIC_BASE_URL is unset. Run `python run.py`, which gets an "
-            "address before the declaration is built, or set it yourself."
-        )
-    return PlaintextHttpToolConfig(
-        url=f"{PUBLIC_BASE_URL}{path}",
-        http_method=HttpMethod.POST,
-        headers=[HttpToolHeaderInput(name="Authorization", value=f"Bearer {TOOL_SECRET}")],
-    )
 
 
 # --------------------------------------------------------------------------- tools
@@ -59,7 +39,7 @@ def hosted(path: str) -> PlaintextHttpToolConfig:
 #    and nothing else, so a result that omits the id cannot name it out loud.
 
 
-@tool(timeout_seconds=8, http=hosted("/tools/find_patient"))
+@tool(timeout_seconds=8)
 async def find_patient(reference_said: str) -> dict:
     """Find the patient record from the reference number on their reminder.
 
@@ -75,7 +55,7 @@ async def find_patient(reference_said: str) -> dict:
     return {"found": True, "reference": patient["reference"], "last_seen": patient["last_seen"]}
 
 
-@tool(timeout_seconds=8, http=hosted("/tools/verify_caller"))
+@tool(timeout_seconds=8)
 async def verify_caller(caller_said: str, reference: str = "") -> dict:
     """Check the name the caller gave against the name on the record.
 
@@ -105,7 +85,7 @@ async def verify_caller(caller_said: str, reference: str = "") -> dict:
     }
 
 
-@tool(timeout_seconds=8, http=hosted("/tools/find_appointments"))
+@tool(timeout_seconds=8)
 async def find_appointments(preference_said: str = "") -> dict:
     """List the next free appointments, soonest first.
 
@@ -122,7 +102,7 @@ async def find_appointments(preference_said: str = "") -> dict:
     }
 
 
-@tool(timeout_seconds=10, http=hosted("/tools/book_appointment"))
+@tool(timeout_seconds=10)
 async def book_appointment(slot_date: str, slot_time: str, reference: str = "") -> dict:
     """Book one of the free appointments for this patient.
 
@@ -142,7 +122,7 @@ async def book_appointment(slot_date: str, slot_time: str, reference: str = "") 
     return result
 
 
-@tool(timeout_seconds=10, http=hosted("/tools/request_callback"))
+@tool(timeout_seconds=10)
 async def request_callback(reason: str, note: str = "", reference: str = "") -> dict:
     """Ask a member of the practice team to call this patient back.
 
@@ -169,43 +149,70 @@ Confirm who you are speaking to before discussing anything on their record.
 """
 
 
-def byo_llm() -> LlmConfigRequest | None:
-    """Point reply generation at this backend, so reply.py owns the words."""
-    base_url = os.environ.get("LLM_BASE_URL", "").rstrip("/")
-    if not base_url and os.environ.get("BYO_LLM") and PUBLIC_BASE_URL:
-        base_url = f"{PUBLIC_BASE_URL}/v1"
-    if not base_url:
-        return None
-    return LlmConfigRequest(
-        base_url=base_url,
-        model=os.environ.get("LLM_MODEL", "starter-reply-engine"),
-        api_key=os.environ.get("LLM_API_KEY", "change-me"),
-    )
+# --------------------------------------------------------------------------- pre-connect
+#
+# Runs before a phone call is answered, from this process. Telephony only: a
+# WebSocket session never runs it and the flow falls back to asking for the
+# reference. It fails open, so a slow lookup costs the personalised greeting and
+# nothing else.
+
+# The platform's pre-connect request arrived with an empty body on a live call,
+# so there was no caller number in it to look up. Every plausible field is
+# checked anyway, and the lookup fails open.
+CALLER_KEYS = ("from", "from_number", "caller", "caller_id", "ani", "phone_number")
 
 
-def pre_connect() -> list[PreConnectRequest] | None:
-    """Look the caller up before a phone call is answered.
+def caller_number(payload: dict) -> str | None:
+    for key in CALLER_KEYS:
+        value = payload.get(key)
+        if isinstance(value, str) and value.strip():
+            return value
+    for value in payload.values():
+        if isinstance(value, dict):
+            found = caller_number(value)
+            if found:
+                return found
+    return None
 
-    Telephony only: a WebSocket session never runs this and the flow falls back
-    to asking for the reference. It fails open, so a slow lookup costs the
-    personalised greeting and nothing else. `allow_overrides` is what lets the
-    response replace the greeting.
+
+def lookup(payload: dict) -> dict:
+    """Find the caller before the call is answered, and greet them by name.
+
+    Says nothing from their record: nobody has confirmed who picked up yet.
     """
-    if not PUBLIC_BASE_URL:
-        return None
-    return [
-        PreConnectRequest(
-            url=f"{PUBLIC_BASE_URL}/pre-connect/lookup",
-            headers=[Header(name="Authorization", value=f"Bearer {TOOL_SECRET}")],
-            returns=[
-                Captured(name="reference", path="reference", default=""),
-                Captured(name="first_name", path="first_name", default=""),
-            ],
-            timeout_ms=800,
-            allow_overrides=True,
-        )
-    ]
+    number = caller_number(payload) or os.environ.get("DEMO_CALLER_NUMBER", "")
+    patient = store.find_by_phone(number) if number else None
+    if patient is None and DEMO_MATCH_ANY:
+        patient = next(iter(store.PATIENTS.values()))
+    store.remember_in_flight(patient)
+    reply.memo.forget()  # a new call starts with nothing remembered
+    if patient is None:
+        return {"matched": False}
+    return {
+        "matched": True,
+        "reference": patient["reference"],
+        "first_name": patient["first_name"],
+        "greeting": (
+            f"Thank you for calling {store.PRACTICE} on a recorded line. My name is "
+            f"{AGENT_NAME}. I have found your record from the number you are calling "
+            f"from. Could you give me your full name so I can check it?"
+        ),
+    }
 
+
+# --------------------------------------------------------------------------- the declaration
+#
+# No URLs anywhere. The tools and the pre-connect handler are served by this
+# process, and `reply.decide` decides every word when BYO_LLM is set. The
+# address the platform reaches all of that at is bound when the agent is
+# deployed — from PUBLIC_BASE_URL here, or from whatever `agent.serve()` is
+# given.
+
+SYSTEM_PROMPT = f"""
+You are {AGENT_NAME}, on the phone for {store.PRACTICE}, on a recorded line.
+Keep every reply to one or two short sentences and ask one question at a time.
+Confirm who you are speaking to before discussing anything on their record.
+"""
 
 agent = VoiceAgent(
     name=f"{store.PRACTICE} reception",
@@ -216,6 +223,18 @@ agent = VoiceAgent(
         f"My name is {AGENT_NAME}. How can I help?"
     ),
     tools=TOOLS,
-    llm=byo_llm(),
-    pre_connect=pre_connect(),
+    reply=reply.decide if os.environ.get("BYO_LLM") else None,
+    pre_connect=[
+        PreConnectRequest(
+            handler=lookup,
+            returns=[
+                Captured(name="reference", path="reference", default=""),
+                Captured(name="first_name", path="first_name", default=""),
+            ],
+            timeout_ms=800,
+            allow_overrides=True,
+        )
+    ],
+    public_url=PUBLIC_BASE_URL,
+    secret=AGENT_SECRET,
 )
