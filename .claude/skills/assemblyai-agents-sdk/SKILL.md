@@ -15,8 +15,25 @@ So the deliverable is almost always a script that serves the user's own
 functions, plus a declaration that points the platform at it. Not a client app,
 and not a hand-written web service.
 
-`references/sdk-reference.md` is the full API surface. Read it for a signature
-or an exact field name; this file covers the shape of the work.
+## Where to look things up
+
+Three sources, in the order that costs least:
+
+1. **`references/sdk-reference.md`**, next to this file — the full API surface.
+   A signature, a field name, a contract the platform sends. Start here.
+2. **The SDK source, which is installed and readable.** `python -c "import
+   assemblyai_agents, pathlib;
+   print(pathlib.Path(assemblyai_agents.__file__).parent)"` prints the directory.
+   It is small and commented, and it is authoritative for what the SDK does —
+   every rule it enforces carries the reason in the error message. Read it
+   rather than guessing a keyword argument.
+3. **https://www.assemblyai.com/docs/voice-agents** — the platform, which the
+   SDK source cannot tell you about: available voices, telephony and SIP setup,
+   the dashboard, session limits, pricing, and features newer than this skill.
+   `https://www.assemblyai.com/docs/voice-agents/voice-agent-api` is the API
+   section. Go here when the question is about the product rather than the
+   package, and when something in this file looks out of date, this is what
+   settles it.
 
 ## Pick a shape first
 
