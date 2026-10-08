@@ -6,6 +6,17 @@ Read this before writing code. The full guidance is
 loads those automatically; every other coding agent should open them now. This
 file is the short version.
 
+Five more skills sit beside it, each for one kind of job. Open the one that
+matches the request:
+
+| Skill | Open it when the user wants |
+| --- | --- |
+| `voice-agent-templates` | a whole agent for a common phone job: booking, order status, website FAQ, smart IVR, bill payments, refills, reminders, lead qualification |
+| `voice-agent-phone-features` | transfers, outbound calls, voicemail, keypad entry, a caller lookup before answering, numbers, webhooks |
+| `voice-agent-speech` | names and numbers heard right, turn-taking, protected lines, languages, voices |
+| `voice-agent-integrations` | a tool that talks to a calendar, Shopify, a CRM, Stripe, Zendesk, Slack, SMS or their own API |
+| `voice-agent-call-review` | to learn from real calls: find issues, patterns, speed, tests from calls |
+
 This repo is the examples. The SDK is a package, installed with pip, at
 https://github.com/dan-ince-aai/assemblyai-agents-python.
 

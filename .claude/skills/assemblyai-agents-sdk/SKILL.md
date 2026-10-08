@@ -223,3 +223,10 @@ from `declared.spec.parameters`, not `{}`.
 - Tests: tools via `assemblyai_agents.testing`; one on
   `agent.hosted_at(...).to_request()`; whole calls offline if `reply=` is set.
 - A README snippet: install, env vars, how to run, how to try it.
+
+## Related skills
+
+For a whole agent for a common phone job, start with `voice-agent-templates`.
+`voice-agent-phone-features`, `voice-agent-speech`, `voice-agent-integrations`
+and `voice-agent-call-review` cover transfers and keypad entry, hearing and
+turn-taking, connecting tools to other services, and learning from real calls.

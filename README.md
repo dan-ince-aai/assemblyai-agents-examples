@@ -109,7 +109,17 @@ have a file for each.
 | `starter/` | The same three steps around a project: system of record, staged call flow, offline rehearsal, whole-call tests. |
 | `phone.py` | Buy a number and attach an agent (billable; needs `--yes`). |
 | `expose.py` | ngrok, for development. |
-| `.claude/skills/` | A Claude Code skill that knows the SDK. |
+| `.claude/skills/` | Claude Code skills: one that knows the SDK, and five for the jobs built with it (templates, phone features, speech, integrations, call review). |
+
+## Using the skills in your own project
+
+The skills work in any project, not only this one. Copy them into your user
+skills folder and Claude Code picks them up everywhere; other coding agents can
+read them from the same place.
+
+```bash
+cp -r .claude/skills/* ~/.claude/skills/
+```
 
 ## Working on this repo
 
